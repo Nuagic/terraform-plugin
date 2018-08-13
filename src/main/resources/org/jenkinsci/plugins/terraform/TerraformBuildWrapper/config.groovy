@@ -10,11 +10,27 @@ f.block() {
                 f.select();
             }
 
+            f.entry(field:'doInit', title: _('Init terraform'), description: 'Run terraform init') {
+                f.checkbox();
+            }
+
+            f.entry(field:'doGet', title: _('Get modules'), description: 'Run terraform get') {
+                f.checkbox();
+            }
+
             f.entry(field:'doGetUpdate', title: _('Update modules'), description: 'Run terraform get with -update flag') {
                 f.checkbox();
             }
 
-            f.entry(field:'doNotApply', title: _('Do not apply automatically'), description: 'Do everything except apply') {
+            f.entry(field:'doPlan', title: _('Get Plan'), description: 'Run terraform plan') {
+                f.checkbox();
+            }
+
+            f.entry(field:'doApply', title: _('Apply'), description: 'Run terraform apply') {
+                f.checkbox();
+            }
+
+            f.entry(field: 'doDestroy', title: _('Destroy On Build Completion'), description: 'Run destroy command to delete infrastructure on build completion') {
                 f.checkbox();
             }
 
@@ -31,12 +47,6 @@ f.block() {
 
             f.entry(field: 'variables', title: _('Resource Variables (Optional)'), description: 'Resource variables will be passed to Terraform as a file') {
                 f.textarea();
-            }
-
-            f.advanced() {
-                f.entry(field: 'doDestroy', title: _('Destroy On Build Completion'), description: 'Run destroy command to delete infrastructure on build completion') {
-                    f.checkbox();
-                }
             }
         }
     }

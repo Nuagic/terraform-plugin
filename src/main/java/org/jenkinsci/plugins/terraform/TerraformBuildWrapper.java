@@ -82,9 +82,12 @@ class VariableInjectionAction implements EnvironmentContributingAction {
 public class TerraformBuildWrapper extends BuildWrapper {
 
     private final String variables;
-    private final boolean doDestroy;
+    private final boolean doInit;
+    private final boolean doGet;
     private final boolean doGetUpdate;
-    private final boolean doNotApply;
+    private final boolean doPlan;
+    private final boolean doApply;
+    private final boolean doDestroy;
     private final Configuration config;
     private final String terraformInstallation;
     private FilePath stateFile;
@@ -99,11 +102,14 @@ public class TerraformBuildWrapper extends BuildWrapper {
 
 
     @DataBoundConstructor
-    public TerraformBuildWrapper(String variables, String terraformInstallation, boolean doGetUpdate, boolean doNotApply, boolean doDestroy, Configuration config) {
+    public TerraformBuildWrapper(String variables, String terraformInstallation, boolean doInit, boolean doGet, boolean doGetUpdate, boolean doPlan, boolean doApply, boolean doDestroy, Configuration config) {
         this.config = config;
-        this.doDestroy = doDestroy;
+        this.doInit = doInit;
+        this.doGet = doGet;
         this.doGetUpdate = doGetUpdate;
-        this.doNotApply = doNotApply;
+        this.doPlan = doPlan;
+        this.doApply = doApply;
+        this.doDestroy = doDestroy;
         this.variables = variables;
         this.terraformInstallation = terraformInstallation;
     }
@@ -134,23 +140,28 @@ public class TerraformBuildWrapper extends BuildWrapper {
     }
 
 
+    public boolean doInit() {
+        return this.doInit;
+    }
+
+
+    public boolean doPlan() {
+        return this.doPlan;
+    }
+
+
+    public boolean doGet() {
+        return this.doGet;
+    }
+
+
     public boolean doGetUpdate() {
         return this.doGetUpdate;
     }
 
 
-    public boolean getDoGetUpdate() {
-        return this.doGetUpdate;
-    }
-
-
-    public boolean doNotApply() {
-        return this.doNotApply;
-    }
-
-
-    public boolean getdoNotApply() {
-        return this.doNotApply;
+    public boolean doApply() {
+        return this.doApply;
     }
 
 
@@ -158,10 +169,6 @@ public class TerraformBuildWrapper extends BuildWrapper {
         return this.doDestroy;
     }
 
-
-    public boolean getDoDestroy() {
-        return this.doDestroy;
-    }
 
 
     public String getTerraformInstallation() {
@@ -202,6 +209,25 @@ public class TerraformBuildWrapper extends BuildWrapper {
         return executablePath;
     }
 
+    public void executeInit(AbstractBuild build, final Launcher launcher, final BuildListener listener) throws Exception {
+        ArgumentListBuilder args = new ArgumentListBuilder();
+        EnvVars env = build.getEnvironment(listener);
+        setupWorkspace(build, env);
+
+        String executable = getExecutable(env, listener, launcher);
+        args.add(executable);
+
+        args.add("init");
+
+        LOGGER.info("Launching Terraform Init: "+args.toString());
+
+        int result = launcher.launch().pwd(workspacePath.getRemote()).cmds(args).stdout(listener).join();
+
+        if (result != 0) {
+            throw new Exception("Terraform Init failed: "+ result);
+        }
+    }
+
     public void executeGet(AbstractBuild build, final Launcher launcher, final BuildListener listener) throws Exception {
         ArgumentListBuilder args = new ArgumentListBuilder();
         EnvVars env = build.getEnvironment(listener);
@@ -225,6 +251,30 @@ public class TerraformBuildWrapper extends BuildWrapper {
         }
     }
 
+    public void executePlan(AbstractBuild build, final Launcher launcher, final BuildListener listener) throws Exception {
+        ArgumentListBuilder args = new ArgumentListBuilder();
+        EnvVars env = build.getEnvironment(listener);
+        setupWorkspace(build, env);
+
+        String executable = getExecutable(env, listener, launcher);
+        args.add(executable);
+
+        args.add("plan");
+
+        if (!isNullOrEmpty(getVariables())) {
+            variablesFile = workingDirectory.createTextTempFile("variables", ".tfvars", evalEnvVars(getVariables(), env));
+            args.add("-var-file="+variablesFile.getRemote());
+        }
+
+        LOGGER.info("Launching Terraform Plan: "+args.toString());
+
+        int result = launcher.launch().pwd(workspacePath.getRemote()).cmds(args).stdout(listener).join();
+
+        if (result != 0) {
+            throw new Exception("Terraform Plan failed: "+ result);
+        }
+    }
+
     public void executeApply(AbstractBuild build, final Launcher launcher, final BuildListener listener) throws Exception {
         ArgumentListBuilder args = new ArgumentListBuilder();
         EnvVars env = build.getEnvironment(listener);
@@ -234,7 +284,7 @@ public class TerraformBuildWrapper extends BuildWrapper {
 
         args.add("apply");
         args.add("-input=false");
-        args.add("-state="+stateFile.getRemote());
+        //args.add("-state="+stateFile.getRemote());
 
         if (!isNullOrEmpty(getVariables())) {
             variablesFile = workingDirectory.createTextTempFile("variables", ".tfvars", evalEnvVars(getVariables(), env));
@@ -253,7 +303,12 @@ public class TerraformBuildWrapper extends BuildWrapper {
     @Override
     public Environment setUp(AbstractBuild build, final Launcher launcher, final BuildListener listener) throws IOException, InterruptedException {
         try {
-            executeGet(build, launcher, listener);
+            if (doInit) {
+              executeInit(build, launcher, listener);
+            }
+            if (doGet) {
+              executeGet(build, launcher, listener);
+            }
             // get executable and var-file from environment
             EnvVars env = build.getEnvironment(listener);
             String executable = getExecutable(env, listener, launcher);
@@ -264,8 +319,10 @@ public class TerraformBuildWrapper extends BuildWrapper {
             // Inject environment variables
             build.addAction(tfbinAction);
             build.addAction(tfvarAction);
-
-            if (! doNotApply) {
+            if (doPlan) {
+              executePlan(build, launcher, listener);
+            }
+            if (doApply) {
               executeApply(build, launcher, listener);
             }
         } catch (Exception ex) {
@@ -293,7 +350,7 @@ public class TerraformBuildWrapper extends BuildWrapper {
 
                         args.add("-input=false");
 
-                        args.add("-state="+stateFile.getRemote());
+                        //args.add("-state="+stateFile.getRemote());
 
                         args.add("--force");
 
